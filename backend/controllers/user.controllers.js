@@ -1,0 +1,104 @@
+import { User } from "../models/user.model.js";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+
+export const register = async (req,res) => {
+    try {
+        const { fullname, password, email } = req.body;
+        if (!fullname || !password || !email) {
+            return res.status(400).json({
+                message: "all fields are requird",
+                success: false
+            })
+        }
+        const user = await User.findOne({ email })
+        if (user) {
+            return res.status(400).json({
+                message: "user is already register with this email",
+                success: false
+            })
+        }
+        const hashedPassword = await bcrypt.hash(password, 10);
+        await User.create({
+            fullname,
+            email,
+            password: hashedPassword
+        })
+        return res.status(201).json({
+            message: "Account is created sucessfully",
+            success: true
+        })
+    } catch (error) {
+        console.log(error);
+        return res.status(500).json({
+            message: "server problem try again",
+            success: false
+        })
+
+    }
+}
+
+export const login = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({
+        message: "All fields are required",
+        success: false
+      });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(400).json({
+        message: "Signup required to access this page!",
+        success: false
+      });
+    }
+
+    const isPasswordMatch = await bcrypt.compare(password, user.password);
+    if (!isPasswordMatch) {
+      return res.status(400).json({
+        message: "Incorrect email or password",
+        success: false
+      });
+    }
+
+    const tokenData = { userId: user._id };
+    const token = jwt.sign(tokenData, process.env.SECRET_KEY, { expiresIn: "1d" });
+
+    return res.status(200)
+      .cookie("token", token, {
+        maxAge: 1 * 24 * 60 * 60 * 1000, // 1 day in ms
+        httpOnly: true,
+        sameSite: "Strict",
+        secure: false
+      })
+      .json({
+        message: `Welcome back ${user.fullname}`,
+        user: {
+          _id: user._id,
+          fullname: user.fullname,
+          email: user.email
+        },
+        success: true
+      });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ message: "Server error", success: false });
+  }
+};
+
+export const logout = async (req, res) => {
+  try {
+    return res.status(200)
+      .cookie("token", "", { maxAge: 0, httpOnly: true, sameSite: "Strict" })
+      .json({
+        message: "User logged out successfully",
+        success: true
+      });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ message: "Server error", success: false });
+  }
+};
